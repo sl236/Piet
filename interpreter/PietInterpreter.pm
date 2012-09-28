@@ -805,7 +805,7 @@ sub do_in_n {
 
     my $self = shift;
 
-    my $c = &_getone;
+    my $c = readline(*STDIN);
 
     $self->_debug(" OPER: in_n:  got $c");
     $self->_trace("N_IN");
