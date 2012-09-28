@@ -1,0 +1,18 @@
+1
+2:
+dup 15 mod bz._track_3
+dup 3 mod bz._track_1
+dup 5 mod bz._track_2
+dup outn 10 out
+
+_track_0:
+1 add dup 100 brle.2b
+
+halt
+
+.track #1
+@"Fizz\n" br._track_0
+.track #2
+@"Buzz\n" br._track_0
+.track #3
+@"FizzBuzz\n" br._track_0

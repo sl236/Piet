@@ -1,0 +1,190 @@
+macro # readln - read input until carriage return to string on stack
+    0 br.0f
+
+ 1: dup bz.0f    
+    2 1 roll pop 1 sub
+
+ 0: 1 add dup 
+    in 
+    dup 8 sub bz.1b.pop 
+    dup 10 sub bz.1f.pop 
+    2 1 roll 1 add 1 roll 
+    br.0b 
+ 1: pop 1 sub
+readln def
+
+macro # print - pop string from stack and print it
+    dup 
+ 0: bz.1f.pop 
+    2 1 roll 
+    out 
+    1 sub 
+    br.0b.dup 
+ 1: 
+print def
+
+# -----------------------------------------
+16 0: @"=" 1 sub dup bnz.0b pop
+@"\n= Piet's Quest =\n"
+16 0: @"=" 1 sub dup bnz.0b pop
+@"\n\n"
+0 0 # game state
+# top: (next track to execute)-1
+# 2nd from top: quest objectives; bitfield
+# 0   canvas  
+# 1   brush
+# 2   idea
+
+# track dispatcher
+_track_0: 
+# @"State: " 2 1 roll dup outn 32 out 2 1 roll dup outn 10 out
+dup 9 sub bz._track_10
+dup 10 sub bz._track_11
+@"\nYou find yourself in "
+dup 
+.btbl _track_1 _track_2 _track_3 _track_4 _track_5 _track_6 _track_7 _track_8 _track_9
+@"error." outn 32 out outn 10 out halt
+
+macro    # read digit 1..7, returns 1..7 or 0 if we got anything else
+# cope with interpreters that switch meaning of in and inn from spec
+1:
+   in dup 7 ble.1f
+2: in 
+   dup 8 sub bz.1b.pop 10 sub bnz.2b
+   48 sub dup 0 bgt.2f pop 0 b.1f
+2: dup 7 ble.1f pop 0 b.1f
+1:
+scan def
+
+
+
+
+.track # 1 - the studio
+@"a rather dark studio.\nThere is an easel here.\nThere is a ladder leading down.\n\n"
+entry:
+"Please select:\n\n1 - paint\n2 - go down ladder\n"
+print
+scan
+.btbl 0f 1f 2f 
+0: "\nPlease select 1 or 2.\n" b.entry
+2: pop 1 b._track_0
+
+1:
+2 1 roll dup 3 1 roll 
+dup 7 sub bnz.2f
+pop 4 b._track_0.add
+2: 
+dup 2 mod bnz.2f
+"You have no canvas.\n" print
+2: 
+dup 4 mod 1 bgt.2f
+"You have no brush.\n" print
+2: 
+dup 8 mod 3 bgt.2f
+"You have no idea what to paint.\n" print
+2: 
+pop b.entry
+
+
+
+
+
+.track # 2 - the landing
+@"a dusty, dim hallway.\nThere is a door to the kitchen here.\nThere is a door to the bedroom here.\nThere is a rickety loft ladder here.\n"
+entry:
+@"\nWhere do you want to go today?\n1 - kitchen\n2 - bedroom\n3 - loft\n"
+scan 10 out
+.btbl 0f 1f 2f 3f 
+0: "\nPlease select 1, 2 or 3.\n" b.entry
+1: pop 2 b._track_0
+2: pop 3 b._track_0
+3: pop 0 b._track_0
+
+
+
+
+
+.track # 3 - the kitchen
+"a well-stocked kitchen.\nIt smells invitingly of apple pancake.\nYour wife is here.\nShe gives you a look.\n"
+
+3:
+print
+@"\nYour options:\n1 - talk to her\n2 - go back to the hallway\n"
+scan 1 sub 
+.btbl 0f 4f
+pop "Huh...?\n" b.3b
+0: 
+2 1 roll dup 3 1 roll
+dup 4 mod 1 bgt.0f
+pop pop 6 b._track_0
+0: # got brush
+dup 8 mod 3 bgt.0f
+pop pop 7 b._track_0
+0: # got idea
+2 mod bz.0f
+"Wife: I hope you're not going to paint on the bedsheets again.\nYou look guilty.\n" b.3b
+0:
+"Wife: Go on, now, off with you.\n" b.3b
+4: 
+pop 1 b._track_0
+
+
+
+
+.track # 4 - the bedroom
+pop 1 # hallway is the only exit
+2 1 roll dup 3 1 roll
+
+0 2 1 roll "\n" dup 2 add -1 roll 
+
+dup 2 mod bnz.1f
+1 2 1 roll "2 - rip off the bedclothes\n" dup 2 add -1 roll
+1:
+
+1 2 1 roll "\nYour options:\n1 - return to the hallway\n" dup 2 add -1 roll
+2 mod bnz.1f
+1 "Sunbeams warm the carefully made bed.\n"
+b.0f
+
+1: 
+1 "The harsh sunlight exposes the unmade bed.\nYou feel a little guilty.\n"
+
+0: 
+1 "a cozy bedroom. "
+4: print bnz.4b
+
+scan 1 sub
+.btbl _track_0 1f
+3: 0 "I beg your pardon?\n" b.4b
+1: 2 1 roll dup 3 1 roll 2 mod bnz.3b
+pop 5 b._track_0
+
+.track # 5 - game complete
+@"a trance...\n\nBy and by, you come to.\nEverything is covered in paint.\nYou look up.\n\nYou behold your magnificent creation!\n\nIt lacks only a name.\n\n1 -call your wife\n\n" scan pop
+@"Your long-suffering wife climbs the ladder.\nShe winces as she sees the loft.\nGleefully, you point at your masterpiece.\nShe consideres it in silence.\n\n" 
+pop 9 br._track_0
+
+.track # 6 - bedroom, snatching the sheets
+@"growing excitement.\nYou look around sneakily; your eyes begin to glow. You pounce.\nPounce!\nFeathers fly everywhere.\nYou snatch the brilliant white bedsheet and hold it close to your chest.\nYou have a white sheet.\n\n\n" 
+pop 1 add 3 b._track_0
+
+.track # 7 - kitchen, talking to your wife; no brush
+@"conversation with your wife.\nYou: Dear, may I borrow that pastry brush?\nWife: Not again! You know how hard it is to get the paint out.\nYou: Pleeease?\nWife: ...oh, very well. I hope you realise this means no pie for you tonight.\n\nYou are now the proud owner of a pastry brush.\n"
+pop 2 add 2 b._track_0
+
+.track # 8 - kitchen, talking to your wife; no idea
+@"conversation with your wife.\nYou: Dear, what should I paint next?\nWife: Oh, you are a silly.\nWife: Just draw some lines or something.\nWife: So long as you sign it, they'll pay you.\nYou: Lines! There's an idea.\n\n" 
+pop 8 b._track_0
+
+.track # 9 - kitchen, talking to wife; no idea; contd
+"a quandary.\nType 1 to continue.\n" print scan pop
+@"\nWife: You still look puzzled.\nYou: ...what should I call it?\nWife: Why don't you paint it first, and show me? I'm sure I'll come up with something to solve your puzzlement.\nYou: ...you are so sensible.\n\nYou are filled with new purpose!\n" 
+pop 4 add 2 b._track_0
+
+.track # 10 - ending, contd
+@"You: The story of today, of how this work came to be, of all you said to me - it is in these lines.\nYou: To one who knows how to read it, everything will be plain.\nWife: You mean it's some sort of code?\nYou: It's art!\n\nYour wife purses her lips and looks around again.\n\n1 - continue\n" scan pop
+pop 10 b._track_0
+
+.track # 11 - ending, contd
+"Wife: A mess, that's what I call it. Where's my pastry brush?\nYou: Right here!\n\nYou dip the brush and scrawl across the top: MESS\n\n\nYour quest is complete.\n" print
+halt

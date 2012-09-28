@@ -1,0 +1,23 @@
+int main()
+{
+  for( int i = 1; i <= 100; i++ )
+  {
+    if( (!(i % 3)) && (!(i % 5)) ) 
+    {  
+       fizzbuzz(); 
+    }
+    else 
+    { 
+      if (!(i%3)) { fizz(); }
+      else
+      { 
+        if (!(i%5)) { buzz(); } else { print( i ); }
+      }
+    }
+  }
+}
+
+int print(int x) { __outn(x); __out(10); __out(13); }
+int fizz() { asm{ @"fizz\r\n" } }
+int buzz() { asm{ @"buzz\r\n" } }
+int fizzbuzz() { asm{ @"fizzbuzz\r\n" } }

@@ -1,0 +1,651 @@
+#!/bin/perl -w
+use strict;
+use Parse::RecDescent;
+use Data::Dumper;
+
+my $grammar = <<'_ENDG'
+<autoaction: [@item]>
+
+program: routine(s) { $item[1] } 
+
+routine: identifier '(' identifier(s? /,/) ')' block 
+             { [$item[1], $item[3], $item[5]] }
+
+block: '{' statement(s?) '}' { $item[2] } 
+
+statement: dstatement ';' { $item[1] } 
+         | bstatement { $item[1] }
+
+dstatement: assignment { $item[1] } 
+         | 'return' expression(?) { [ $item[1], $item[2] ] }
+         | 'break' { [ 'break', $thisline ] }
+         | expression { [ 'block', [ $item[1] ] ] }
+
+bstatement: asm { $item[1] }
+         | 'for' 
+            '(' dstatement(s? /,/) ';' 
+                bexpression ';' 
+                dstatement(s? /,/) ')' block 
+             { ['block', 
+                [   ['_', $item[3]], 
+                    ['while', $item[5], 
+                      [ @{$item[9]}, @{$item[7]} ] 
+                    ] 
+               ]] 
+             } 
+         | 'if' condition block 'else' block { [ 'ifelse', $item[2], $item[3], $item[5] ] }
+         | /if|while/ condition block { [ $item[1], $item[2], $item[3] ] }
+         | block { [ 'block', $item[1] ] }
+
+condition: '(' bexpression ')' { $item[2] }
+
+bexpression: cexpression /\|\||\&\&/ bexpression { [ $item[2], $item[1], $item[3] ] } 
+         | cexpression { $item[1] }
+
+cexpression: expression /==|!=|\<=?|\>=?/ cexpression { [ $item[2], $item[1], $item[3] ] } 
+         | '(' bexpression ')' { $item[2] }
+         | expression { $item[1] }
+
+assignment: identifier '=' expression { ['=', $item[1], $item[3]] }
+         |  identifier /[+\/*%-]/ '=' expression { ['=', $item[1], [$item[2], $item[1], $item[4]]] }
+asm: 'asm' '{' piet(s) '}' { [$item[0], $item[3]] }
+
+expression: sum { $item[1] } 
+         | term { $item[1] } 
+
+sum: product /[+-]/ sum  { [ $item[2], $item[1], $item[3] ] }
+   | product { $item[1] } 
+
+product: term /[*\/%]/ product { [ $item[2], $item[1], $item[3] ] }
+       | term  { $item[1] }
+
+term: integer { $item[1] }
+   |  identifier '(' expression(s? /,/) ')' { [ 'call', $item[1], $item[3] ] }
+   |  '++' identifier { [ 'call', '__preincrement', [ $item[2] ] ] }
+   |  '--' identifier { [ 'call', '__predecrement', [ $item[2] ] ] }
+   |  identifier '++' { [ 'call', '__postincrement', [ $item[1] ] ] }
+   |  identifier '--' { [ 'call', '__postdecrement', [ $item[1] ] ] }
+   |  identifier { [ 'deref', $item[1], $thisline ] }
+   | '!' expression { ['!', $item[2] ] }
+   |  '(' expression ')' { $item[2] }
+
+
+piet: pinstruction { $item[1] } 
+    | pconstant { $item[1] }
+
+pinstruction: /push|pop|add|sub|mul|div|mod|not|gt|ptr|switch|dup|roll|inn|in|outn|out/ { $item[1] }
+
+pconstant: integer { $item[1] }
+         | '@' string { '@' . $item[2] }
+         | string { $item[1] }
+         | identifier { '*' . $item[1] }
+
+
+identifier: /[A-Za-z_]+[A-Za-z_0-9]*/ { $item[1] }
+integer: /-?[0-9]+/ { $item[1] }
+       | "'" /[^']/ "'" { ord($item[2]) }
+       | "'" "\\" /./ "'" { ::echar($item[3]) }
+string: /("[^"]*[^\\]")/ { $item[1] }
+      | /""/ { $item[1] }
+semi: ';'
+_ENDG
+;
+
+sub echar
+{
+  my ($c) = @_;
+  eval('$c = ord("\\' . $c . '")'); 
+  return $c;
+}
+
+# -----------------------------------------------------
+my %tracks = ( '__init' => 0 ); 
+my @tracks = ( '__init' );
+my @entrypoints;
+my $currtrack;
+
+sub GetTrack
+{
+  my ($routine) = @_;
+  defined($tracks{$routine}) and return $tracks{$routine};
+  push @tracks, $routine;
+  $tracks{$routine} = $#tracks;
+  return $#tracks;
+}
+
+my $indent = 0;
+sub Indent
+{
+   return ('  ' x $indent) . join('',@_) . "\n"; 
+}
+
+sub StringifyExpression
+{
+  my ($expression) = @_;
+
+  if(ref($expression))
+  {
+    if( $expression->[0] eq 'call' )
+    {
+      my @param;
+      foreach my $e(@{$expression->[2]})
+      {
+        push @param, StringifyExpression($e);
+      }
+      return $expression->[1].'('.join(',',@param).')'; 
+    }
+    else
+    {
+      my $a = StringifyExpression($expression->[1]);
+      my $b = $a;
+      defined($expression->[2]) and $b = StringifyExpression($expression->[2]);
+      defined($expression->[2]) or $a = '';
+      return '('.$a.$expression->[0].$b.')'; 
+    }
+  }
+
+  return $expression;
+}
+
+sub AssembleBlock
+{
+  my ($context, $block) = @_;
+  $context = PushContext( $context );
+  my $result = AssembleUnscopedBlock( $context, $block );
+  push @$result, @{ ExitContext( $context ) };
+  return $result;
+}
+
+sub AssembleUnscopedBlock
+{
+  my ($context, $block) = @_;
+  my $result = [ ];
+  foreach my $statement(@$block)
+  {
+    if($statement->[0] eq '=')
+    {
+       push @$result, ( @{ AssembleExpression( $context, $statement->[2] ) } );
+       push @$result, ( @{ AssembleAssignment( $context, $statement->[1] ) } );
+    }
+    elsif($statement->[0] eq 'asm')
+    {
+      $context = PushContext($context);
+      foreach my $op( @{$statement->[1]} )
+      {
+        if( $op =~ /^\*(.+)$/ )
+        {
+          push @$result, @{ AssembleExpression( $context, $1 ) };
+        }
+        else
+        {
+          push @$result, $op;
+        }
+      }
+      #push @$result, @{ExitContext($context)};
+      $context = $context->{'prev'};
+    }
+    elsif($statement->[0] eq 'return')
+    {
+      my $e = $statement->[1];
+      if( $#{$statement->[1]} > -1 )
+      {
+       push @$result, (@{ AssembleExpression($context, $statement->[1]->[0]) });
+      }
+      else
+      {
+       push @$result, '1';
+      }
+      push @$result, @{ AssembleReturn($context) };
+    }
+    elsif($statement->[0] eq 'call')
+    {
+      my $c = PushContext( $context ); 
+      push @$result, (@{ AssembleExpression($c, $statement) });
+      push @$result, @{ExitContext($c)};
+    }
+    elsif($statement->[0] eq '_')
+    {
+      push @$result, (@{ AssembleUnscopedBlock($context, $statement->[1]) });
+    }
+    elsif($statement->[0] eq 'block')
+    {
+      push @$result, (@{ AssembleBlock($context, $statement->[1]) });
+    }
+    elsif($statement->[0] eq 'break' )
+    {
+      push @$result, (@{ AssembleBreak($context, $statement->[1], $statement->[2]) });
+    }
+    else # flow of control
+    {
+      my $op = $statement->[0]; 
+      my $a = $context->{'lbl'};
+      my $b = $context->{'lbl'}+1;
+      $context->{'lbl'} += 2;
+
+      my $condition = AssembleExpression( $context, $statement->[1] );
+      $context->{'sp'}--;
+
+      my $loopcontext = PushContext($context);
+      (($op eq 'for') or ($op eq 'while')) and ($loopcontext->{'loop'} = $b);
+      my $asm = AssembleBlock( $loopcontext, $statement->[2] );
+
+      my $epart = [];
+      if($op eq 'ifelse') 
+      { 
+        $epart = AssembleBlock( $context, $statement->[3] )
+      }
+
+      $context->{'lbl'} -= 2;
+      
+      ($op eq 'while') and push @$result, $a.':'; 
+      push @$result, @{$condition};
+      push @$result, 'bz.'.$b.'f'; 
+      push @$result, @{$asm};
+      ($op eq 'while') and push @$result, 'b.'.$a.'b'; 
+      if($op eq 'ifelse') 
+      {
+        push @$result, 'b.'.$a.'f'; 
+        push @$result, $b.':'; 
+        push @$result, @{$epart};
+        push @$result, $a.':'; 
+      }
+      else
+      {
+        push @$result, $b.':'; 
+      }
+    }
+  }
+  return $result;
+}
+
+sub AssembleRoutine
+{
+  my ($context, $routine) = @_;
+  $context = PushContext($context);
+
+  # describe stackframe
+  $context->{'local'} = 1;
+  DeclareVariable( $context, '__retval' );
+  foreach my $argument( @{$routine->[1]} )
+  {
+    DeclareVariable( $context, $argument );
+  }
+  $context->{'sp'} = 2;
+  # --
+
+  $currtrack = GetTrack( $routine->[0] );
+  @entrypoints = ( '__entry_0' );
+
+  my $result = [  ];
+  push @$result, @{AssembleBlock( $context, $routine->[2] )};
+  unshift @$result, 
+  ( 
+    'dup', 'pop', '.btbl ' . join( ' ', @entrypoints ), 
+    'halt', '__entry_0:'
+  );
+
+
+  if($result->[$#$result] ne 'b._track0')
+  {
+    push @$result, '1';
+    push @$result, @{ AssembleReturn( $context ) };
+  }
+  
+  return [ @{PeepholeOptimise( $result )} ];
+}
+
+sub FindVariable
+{
+   my ($context, $name) = @_;
+   my $depth = $context->{'sp'};
+   while( defined($context->{'fmap'}) )
+   {
+     if( defined($context->{'fmap'}->{$name}) )
+     {
+       return $depth + ($#{$context->{'frame'}} - $context->{'fmap'}->{$name});
+     }
+     else
+     {
+       $depth += $#{$context->{'frame'}} + 1;
+       $context = $context->{'prev'};
+       $depth += $context->{'sp'};
+     }
+   }
+   return -1;
+}
+
+sub AssembleDereference
+{
+   my ($context, $name, $line) = @_;
+   my $depth = FindVariable( $context, $name );
+   my $result = [ ];
+   if( $depth < 0 )
+   {
+     defined($line) or $line = 'unknown';
+     die "Undeclared variable $name in line $line\n";
+   }  
+   if( $depth > 0 )
+   {
+     push @$result, ($depth+1);
+     push @$result, $depth;
+     push @$result, 'roll';
+     push @$result, 'dup';
+     push @$result, ($depth+2);
+     push @$result, 1;
+     push @$result, 'roll';
+   }
+   else
+   {
+     push @$result, 'dup';
+   }
+   $context->{'sp'}++;
+   return $result;
+}
+
+sub DeclareVariable
+{
+   my ($context, $name) = @_;
+   push @{$context->{'frame'}}, $name;
+   $context->{'fmap'}->{$name} = $#{$context->{'frame'}};
+}
+
+sub PushContext
+{
+   my ($context) = @_;
+   return { 'sp' => 0, 'lbl' => $context->{'lbl'}, 'frame' => [], 'fmap' => {}, 'prev' => $context };
+}
+
+sub AssembleBreak
+{
+  my ($context, $line) = @_;
+  my $result = [ ];
+
+  my $count = 0;
+  while( !defined($context->{'loop'}) )
+  {
+    $count += $context->{'sp'} + $#{$context->{'frame'}} + 1;
+    $context = $context->{'prev'};
+    defined($context->{'local'}) and die("break when not in a loop at line $line\n");
+  }
+
+  push @$result, ( ('pop') x $count );
+  push @$result, 'b.'.$context->{'loop'}.'f';
+  return $result;
+}
+
+sub AssembleReturn
+{
+  my ($context) = @_;
+  my $result = [ ];
+  push @$result, @{ AssembleAssignment($context, '__retval') };
+
+  my $count = 0;
+  while( !defined($context->{'local'}) )
+  {
+    $count += $context->{'sp'} + $#{$context->{'frame'}} + 1;
+    $context = $context->{'prev'};
+  }
+
+  push @$result, ( ('pop') x $count );
+  push @$result, 'b._track_0';
+  return $result;
+}
+
+sub ExitContext
+{
+   my ($context) = @_;
+   my $result = [];
+   my $count = $context->{'sp'} + $#{$context->{'frame'}} + 1;
+   # push @$result, ' # exit context: ' . $context->{'sp'} . ' ' . ( $#{$context->{'frame'}} + 1);
+   push @$result, ( ('pop') x $count );
+   return $result;
+}
+
+sub DumpTree
+{
+  my ($tree) = @_;
+  my $context = PushContext( { 'sp' => 0, 'lbl' => 1 } );
+  
+  my %routines;
+   
+  foreach my $routine(@$tree)
+  {
+    $routines{$routine->[0]} = AssembleRoutine($context, $routine);
+  }
+
+  {
+    my $init = [ ];
+    push @$init, (0, 0, 0, 0, 0, GetTrack('main'), '_track_0:', 'dup', 'bz.0f');
+    my $btbl =  '.btbl ';
+    foreach my $i (0 .. $#tracks)
+    {
+      $btbl .= '_track_' . $i . ' ';
+    }
+    push @$init, $btbl;
+    push @$init, ('0:', 'halt');
+    $routines{'__init'} = $init;
+  }
+
+  my @outt;
+  foreach my $t( @tracks )
+  {
+    defined($routines{$t}) or print STDERR "Undefined function: $t\n";
+    push @outt, " # track for function $t\n" . join("\n", @{$routines{$t}}) . "\n";
+  }
+  
+  print join ( "\n\n.track\n", @outt ); 
+}
+
+# ------------------------------------
+sub PeepholeOptimise
+{
+  my ($result) = @_;
+    my $i = 0;
+    while( $i <= ($#$result - 4) )
+    {
+      # 4xnot -> 2xnot
+      if( ( $result->[$i+0] eq 'not' )
+      &&  ( $result->[$i+1] eq 'not' )
+      &&  ( $result->[$i+2] eq 'not' )
+      &&  ( $result->[$i+3] eq 'not' ) )
+      {
+        splice @$result, $i, 2;
+      }
+      # <constant> pop -> none
+      elsif( (( $result->[$i+0] =~ /^-?[0-9]+$/ )||($result->[$i+0]) eq 'dup')
+      &&     ( $result->[$i+1] eq 'pop' ) )
+      {
+        splice @$result, $i, 2;
+      }
+      else
+      {
+        $i++;
+      }
+    }
+
+  return $result;
+}
+
+sub AssembleAssignment
+{
+   my ($context, $name) = @_;
+   my $depth = FindVariable( $context, $name );
+   my $result = [ ' # (assign to ' . $name ];
+   if( $depth < 0 )
+   {
+     DeclareVariable( $context, $name );
+     $depth = 0;
+   }  
+   if( $depth > 1 )
+   {
+     push @$result, ($depth+1);
+     push @$result, $depth;
+     push @$result, 'roll';
+     push @$result, 'pop';
+     push @$result, $depth;
+     push @$result, 1;
+     push @$result, 'roll';
+   }
+   elsif( $depth > 0 )
+   {
+     push @$result, 2;
+     push @$result, 1;
+     push @$result, 'roll';
+     push @$result, 'pop';
+   }
+   $context->{'sp'}--;
+   push @$result, ' # ) ';
+   return $result;
+}
+
+sub AssembleFunctionCall
+{
+  my ($context, $expression) = @_;
+
+  if( $expression->[1] =~ /^__(inn?)$/ )
+  {
+    $context->{'sp'}++;
+    return [ $1 ]; 
+  }
+
+  if( $expression->[1] =~ /^__(outn?)$/ )
+  {
+    my $result = [ ]; 
+    my $op = $1;
+    foreach my $argument( @{ $expression->[2] } )
+    {
+      push @$result, @{ AssembleExpression( $context, $argument ) };
+      push @$result, $op; 
+      $context->{'sp'}--;
+    }
+    push @$result, 1;   # all function calls return a result
+    $context->{'sp'}++;
+    return $result;
+  }
+
+  if( $expression->[1] =~ /^__(pre|post)(inc|dec)rement$/ )
+  {
+    my $result = [ ]; 
+    my $pre = ($1 eq 'pre');
+    my $op = ($2 eq 'inc') ? 'add' : 'sub';
+    my $arg = $expression->[2]->[0];
+    push @$result, @{ AssembleExpression( $context, $arg ) };
+    if( $pre )
+    {
+      push @$result, (1, $op, 'dup');
+    }
+    else
+    {
+      push @$result, ('dup', 1, $op);
+    }
+    $context->{'sp'}++;
+    push @$result, @{ AssembleAssignment( $context, $arg ) };
+
+    return $result;
+  }
+
+  $context->{'sp'}++; # a value is returned
+  $context = PushContext( $context ); 
+  my $entry = '__entry_' . ($#entrypoints+1);
+  my $entryidx = ($#entrypoints+1);
+  push @entrypoints, $entry;
+
+  my $result = [ ];  
+  push @$result, ' # (call ' . $expression->[1];
+  push @$result, '1' . ' # __retval';
+  foreach my $param( @{ $expression->[2] } )
+  {
+    push @$result, @{ AssembleExpression( $context, $param ) };
+  } 
+  push @$result, $entryidx . ' # return ep'; 
+  push @$result, $currtrack . ' # return track'; 
+  push @$result, 0 . ' # callee ep';
+  push @$result, GetTrack( $expression->[1] ) . ' # callee track';  
+  push @$result, 'b._track_0' . ' # call dispatcher';
+  push @$result, $entry . ':';
+  push @$result, @{ ExitContext( $context ) };
+  push @$result, ' # )';
+  return $result;
+}
+
+sub AssembleExpression
+{
+  my ($context, $expression) = @_;
+  defined($expression) or return [];
+
+  if( ref( $expression ) )
+  {
+    my $result = [];
+
+    if( $expression->[0] eq 'call' )
+    {
+      push @$result, @{ AssembleFunctionCall( $context, $expression ) };
+    }
+    elsif( $expression->[0] eq 'deref' )
+    {
+      return AssembleDereference( $context, $expression->[1], $expression->[2] );
+    }
+    else
+    {
+      my $unary = !defined($expression->[2]);
+      push @$result, ' # (' . StringifyExpression($expression);
+      push @$result, @{ AssembleExpression( $context, $expression->[1] ) };
+      if( !$unary )
+      {
+        push @$result, @{ AssembleExpression( $context, $expression->[2] ) };
+      }
+
+      my $op = $expression->[0];
+      ($op eq '!') and push @$result, 'not';
+      ($op eq '-') and push @$result, 'sub';
+      ($op eq '+') and push @$result, 'add';
+      ($op eq '*') and push @$result, 'mul';
+      ($op eq '/') and push @$result, 'div';
+      ($op eq '%') and push @$result, 'mod';
+      ($op eq '>') and push @$result, 'gt';
+      ($op eq '<') and push @$result, (2, 1, 'roll', 'gt');
+      ($op eq '<=') and push @$result, ('gt', 'not');
+      ($op eq '>=') and push @$result, (2, 1, 'roll', 'gt', 'not');
+      ($op eq '!=') and push @$result, ('sub', 'not', 'not');
+      ($op eq '==') and push @$result, ('sub', 'not');
+      ($op eq '||') and push @$result, 
+         ('not', 'not', 2, 1, 'roll', 'not', 'not', 'add', 'not', 'not'); 
+      ($op eq '&&') and push @$result, ('mul', 'not', 'not');
+      push @$result, ' # )';
+      if( !$unary ) { $context->{'sp'}--; }
+    }
+
+    return $result;
+  }
+  elsif( $expression =~ /^-?[0-9]+$/ )
+  {
+    $context->{'sp'}++;
+    return [ $expression ];
+  }  
+  elsif( $expression =~ /^("[^"]+"|'[^'+]')$/ )
+  {
+    $context->{'sp'}++;
+    return [ $expression ];
+  }  
+  else
+  {
+    return AssembleDereference( $context, $expression );
+  }
+}
+
+# -----------------------------------------------------
+
+my $parser = new Parse::RecDescent ($grammar) or die "Bad grammar!\n";
+
+my $text = join('', <>);
+$text =~ s/\/\/.+$//gm;
+
+my $result = $parser->program($text);
+if(defined($result))
+{ 
+  DumpTree( $result );
+}
+else
+{
+  print "Syntax error.\n";
+}
