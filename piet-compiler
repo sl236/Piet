@@ -287,6 +287,7 @@ sub AssembleRoutine
 
   if($result->[$#$result] ne 'b._track0')
   {
+	$context->{'sp'}++;
     push @$result, '1';
     push @$result, @{ AssembleReturn( $context ) };
   }

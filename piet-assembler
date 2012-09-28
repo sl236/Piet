@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-my $DEBUG = 1;
+my $DEBUG = 0;
 
 my @colours;
 my %commands;
