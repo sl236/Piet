@@ -652,10 +652,10 @@ sub assemble
         {
           ($c->[1] < 3) or die("branch opcode width incompatible with forward reference\n");
 
-		      $arry[$#arry-$c->[1]-1] = 0;
-		      $arry[$#arry-$c->[1]-2] = 0;
 		      $arry[$#arry-$c->[1]-3] = 0;
-		      $arry[$#arry-$c->[1]-4] = colouridx(_hlc(0, 0, 'push'));
+		      $arry[$#arry-$c->[1]-4] = 0;
+		      $arry[$#arry-$c->[1]-5] = 0;
+		      $arry[$#arry-$c->[1]-6] = colouridx(_hlc(0, 0, 'push'));
 
           $arry[(($ltw*$label)+3)] = 0;
           $arry[(($ltw*$label)+2)] = colouridx(_hlc(0, 0, 'ptr'));
