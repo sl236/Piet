@@ -84,6 +84,7 @@ pconstant: integer { $item[1] }
 identifier: /[A-Za-z_]+[A-Za-z_0-9]*/ { $item[1] }
 integer: /-?[0-9]+/ { $item[1] }
        | "'" /[^']/ "'" { ord($item[2]) }
+       | "' '" { 32 }
        | "'" "\\" /./ "'" { ::echar($item[3]) }
 string: /("[^"]*[^\\]")/ { $item[1] }
       | /""/ { $item[1] }
@@ -639,7 +640,7 @@ sub AssembleExpression
 my $parser = new Parse::RecDescent ($grammar) or die "Bad grammar!\n";
 
 my $text = join('', <>);
-$text =~ s/\/\/.+$//gm;
+$text =~ s/\/\/.*$//gm;
 
 my $result = $parser->program($text);
 if(defined($result))
