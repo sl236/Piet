@@ -1,0 +1,16 @@
+int main()
+{
+  for( int i = 99; i > 0; i-- )
+  {
+    beer( i );
+    asm{ @" on the wall.\nTake one down, pass it around\n"}
+  }
+  beer( 0 );
+  asm{ @" on the wall.\n" }
+}
+
+int beer( int i )
+{
+  __outn(i);
+  asm{ @" bottles of beer" }
+}

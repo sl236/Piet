@@ -1,0 +1,19 @@
+int main()
+{
+  int a = 0;
+  int b = 0;
+  asm { inn inn inn }
+  
+  asm{ @"a + b = " } println( a+b );
+  asm{ @"a - b = " } println( a-b );
+  asm{ @"a * b = " } println( a*b );
+  asm{ @"a / b = " } println( a/b );
+  asm{ @"remainder(a / b) = " } println( a%b );
+}
+
+
+int println( int x )
+{
+  __outn(x); 
+  asm{ @"\n" }
+}
