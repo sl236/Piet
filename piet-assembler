@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-my $DEBUG = 0;
+my $DEBUG = 1;
 
 my @colours;
 my %commands;
@@ -105,22 +105,8 @@ sub gen_push_int
   {
     $track->[$#$track]->[1] = $m;
     push @$track,[2, 1, 'push'];
-    my @tmp;
-    $int = int($int / $m);
-    while($int > $m )
-    {
-      $track->[$#$track]->[1] = $m;
-      push @$track,[2, 1, 'push'];
-      push @tmp,[2, 1, 'mul'];
-      $int = int($int / $m);
-    }
-    if($int > 1)
-    {
-     $track->[$#$track]->[1] = $int;
-     push @$track,[2, 1, 'push'];
-     push @tmp,[2, 1, 'mul'];
-    }
-    push @$track, @tmp;
+    gen_push_int( $track, int($int / $m) );
+    push @$track,[2, 1, 'mul'];
     return;
   }
   
