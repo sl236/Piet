@@ -286,7 +286,7 @@ sub AssembleRoutine
   );
 
 
-  if($result->[$#$result] ne 'b._track0')
+  if($result->[$#$result] ne 'b._track_0')
   {
 	$context->{'sp'}++;
     push @$result, '1';
