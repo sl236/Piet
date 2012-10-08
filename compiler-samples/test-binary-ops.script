@@ -35,6 +35,25 @@ main()
 	asm { @"1==1 || 1==1 && 1==2 = " } 
 	if( 1==1 || 1==1 && 1==2 ) { true(); } else { false(); }
 	asm { @"\n" }
+
+	// from Hugh Satow
+	wrln(1);
+	wrln(-minus(2));
+	a = 2; wrln(++a);
+	a = 5; wrln(--a);
+	a = 5; wrln(a++);
+	a = 6; wrln(a--);
+	a = 7; wrln(a);
+	wrln(8+(!8));
+	wrln(-(-9));
+	wrln(--10);
+	wrln((11-1)+1);
+	// 4 combinations of ' -'|' -'' -'|' -'a
+	a = 12; wrln( - -a);
+	a = 14; wrln( -- a);
+	a = 14; wrln(-  -a);
+	a = 15; wrln(- - a);
+
 }
 
 true()
@@ -46,3 +65,14 @@ false()
 {
 	asm { @"false" }
 }
+
+minus(xx)
+{
+	return -xx;
+}
+
+wrln(nn)
+{
+	__outn(nn); __out('\n');
+}
+
