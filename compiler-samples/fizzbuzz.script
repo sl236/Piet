@@ -1,6 +1,6 @@
-int main()
+main()
 {
-  for( int i = 1; i <= 100; i++ )
+  for( i = 1; i <= 100; i++ )
   {
     if( (!(i % 3)) && (!(i % 5)) ) 
     {  
@@ -17,7 +17,7 @@ int main()
   }
 }
 
-int print(int x) { __outn(x); __out(10); __out(13); }
-int fizz() { asm{ @"fizz\r\n" } }
-int buzz() { asm{ @"buzz\r\n" } }
-int fizzbuzz() { asm{ @"fizzbuzz\r\n" } }
+print(x) { __outn(x); __out(10); __out(13); }
+fizz() { asm{ @"fizz\r\n" } }
+buzz() { asm{ @"buzz\r\n" } }
+fizzbuzz() { asm{ @"fizzbuzz\r\n" } }

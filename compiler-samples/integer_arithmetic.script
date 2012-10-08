@@ -1,7 +1,7 @@
-int main()
+main()
 {
-  int a = 0;
-  int b = 0;
+  a = 0;
+  b = 0;
   asm { inn inn inn }
   
   asm{ @"a + b = " } println( a+b );
@@ -12,7 +12,7 @@ int main()
 }
 
 
-int println( int x )
+println( x )
 {
   __outn(x); 
   asm{ @"\n" }
