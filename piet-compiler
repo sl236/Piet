@@ -81,7 +81,8 @@ pconstant: integer { $item[1] }
 
 
 identifier: /[A-Za-z_]+[A-Za-z_0-9]*/ { $item[1] }
-integer: /-?[0-9]+/ { $item[1] }
+integer: "0x" /[0-9A-Fa-f]+[0-9A-Fa-f]*/ { hex($item[2]) } 
+	   | /-?[0-9]+/ { $item[1] }
        | "'" /[^']/ "'" { ord($item[2]) }
        | "' '" { 32 }
        | "'" "\\" /./ "'" { ::echar($item[3]) }
