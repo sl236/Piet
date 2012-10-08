@@ -51,13 +51,12 @@ assignment: identifier '=' expression { ['=', $item[1], $item[3]] }
 asm: 'asm' '{' piet(s) '}' { [$item[0], $item[3]] }
 
 expression: sum { $item[1] } 
-         | term { $item[1] } 
 
-sum: product /[+-]/ sum  { [ $item[2], $item[1], $item[3] ] }
-   | product { $item[1] } 
+sum: product sumx(s?) { ::mktree($item[1], $item[2]); }
+sumx: /[+-]/ product { [ $item[1], $item[2] ] }
 
-product: term /[*\/%]/ product { [ $item[2], $item[1], $item[3] ] }
-       | term  { $item[1] }
+product: term prodx(s?) { ::mktree($item[1], $item[2]); }
+prodx: /[*\/%]/ term { [ $item[1], $item[2] ] }
 
 term: integer { $item[1] }
    |  identifier '(' expression(s? /,/) ')' { [ 'call', $item[1], $item[3] ] }
@@ -68,7 +67,7 @@ term: integer { $item[1] }
    |  identifier { [ 'deref', $item[1], $thisline ] }
    | '!' expression { ['!', $item[2] ] }
    |  '(' expression ')' { $item[2] }
-
+   | '-' expression { ['-', '0', $item[2] ] }
 
 piet: pinstruction { $item[1] } 
     | pconstant { $item[1] }
@@ -97,6 +96,15 @@ sub echar
   my ($c) = @_;
   eval('$c = ord("\\' . $c . '")'); 
   return $c;
+}
+
+sub mktree
+{
+  my ($lhs, $rhs) = @_;
+  if (!ref($rhs)) { return $lhs; }	# (cautious)
+  my $rv = $lhs;
+  foreach my $el ( @{ $rhs } ) { $rv = [ $el->[0], $rv, $el->[1] ]; }
+  return $rv;
 }
 
 # -----------------------------------------------------
