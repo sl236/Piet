@@ -1,6 +1,8 @@
 Piet
 ====
 
+---
+
 Piet assembler
 --------------
 
@@ -16,6 +18,9 @@ See http://www.toothycat.net/wiki/wiki.pl?MoonShadow/Piet for further documentat
 Kudos to [Hugh Satow](http://freespace.virgin.net/hugh.satow/midp/) for many assorted tweaks and bugfixes.
 
 ---
+
+Piet interpreter
+----------------
 
 For convenience, a fork of Marc Majcher's Piet interpreter is included. 
 
