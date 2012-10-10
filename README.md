@@ -2,10 +2,12 @@ Piet
 ====
 
 Piet assembler
+--------------
 
     ./piet-assembler somefile.piet | pnmtopng > out.png
 
 Piet compiler
+-------------
 
     ./piet-compiler somefile.script | piet-assembler | pnmtopng > out.png
 
