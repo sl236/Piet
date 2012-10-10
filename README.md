@@ -10,6 +10,7 @@ Piet compiler
     ./piet-compiler somefile.script | piet-assembler | pnmtopng > out.png
 
 See http://www.toothycat.net/wiki/wiki.pl?MoonShadow/Piet for further documentation and samples
+Kudos to [Hugh Satow](http://freespace.virgin.net/hugh.satow/midp/) for many assorted tweaks and bugfixes.
 
 ====
 
