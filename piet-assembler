@@ -134,20 +134,27 @@ sub gen_push_expr
   my $i = 0;
   my $ldd = 0;
   
+  # in a general ASCII string, we expect the differences between adjacent characters to be smaller than the absolute values of those characters
+  # so encode the differences instead of the character values, and use add/sub and dup to generate the correct sequence on the stack at runtime
+  
   while($i <= $#chars)
   {
     my $n = ord $chars[$i++];
-    my ($d, $act) = get_d_act($n, $last);
+    my ($d, $act) = get_d_act($n, $last); # the difference from the last character, and the command (add/subtract)
     
     if( $d <= $modulus )
     {      
-      if( $d != 0 )
+      if( $d != 0 ) # there is a difference, and it'll fit into the track, so we can widen the previous instruction to encode it
       {
         if( $i < $#chars )
         {
             my($d2, $act2) = get_d_act(ord($chars[$i]),$n);
-            if( ($d2!=0) && ($d < ($modulus-9)) && ($d2 < ($modulus-9)) )
+            
+            # here's an evil thought: can we encode a whole bunch of small differences more compactly by squishing the track into an S shape?
+            # let's see if the next one fits
+            if( ($d2!=0) && ($d < ($modulus-9)) && ($d2 < ($modulus-9)) ) 
             {
+			  # ooh, it does.
               if($ldd)
               {
                 pop @$track;
@@ -186,6 +193,10 @@ sub gen_push_expr
               }
               push @$cmds, ((19) x (($modulus-1) - $#$cmds));
               push @$track, [1, $modulus, $cmds];
+              if( $#$cmds >= ($modulus-1) )
+              {
+				push @$track, [2, 1, 'white'];
+			  }
               push @$track, [2, 1, 'white'];
               push @$track, [2, 1, 'ext'];
               $last = ord($chars[$i++]);
@@ -205,12 +216,12 @@ sub gen_push_expr
       }
       else
       {
-        push @$track,[2, 1, 'dup'];
+        push @$track,[2, 1, 'dup']; # two identical chars in a row, just dup
       }
     }
     else
     {
-      gen_push_int($track, $n);
+      gen_push_int($track, $n); # there's a difference but it won't fit on the track; just encode the whole character the regular way
     }
     
     $last = $n;
@@ -652,10 +663,10 @@ sub assemble
         {
           ($c->[1] < 3) or die("branch opcode width incompatible with forward reference\n");
 
+		      $arry[$#arry-$c->[1]-2] = 0;
 		      $arry[$#arry-$c->[1]-3] = 0;
 		      $arry[$#arry-$c->[1]-4] = 0;
-		      $arry[$#arry-$c->[1]-5] = 0;
-		      $arry[$#arry-$c->[1]-6] = colouridx(_hlc(0, 0, 'push'));
+		      $arry[$#arry-$c->[1]-5] = colouridx(_hlc(0, 0, 'push'));
 
           $arry[(($ltw*$label)+3)] = 0;
           $arry[(($ltw*$label)+2)] = colouridx(_hlc(0, 0, 'ptr'));
@@ -751,6 +762,9 @@ sub seqlink
             ( $root->[$x+$height-2]->[1]->[$sidx*3+2] < 18 )
           ||( $root->[$x+$height-1]->[1]->[$sidx*3+2] < 18 )
           ||( $root->[$x+$height]->[1]->[$sidx*3+2] < 18 )
+          ||( $root->[$x-4]->[1]->[$sidx*3+2] < 18 )
+          ||( $root->[$x-3]->[1]->[$sidx*3+2] < 18 )
+          ||( $root->[$x-2]->[1]->[$sidx*3+2] < 18 )
     )
     {
       $DEBUG and print STDERR "$sidx: $x $height " . $root->[$x+$height-1]->[1]->[$sidx*3-0] . "\n";
