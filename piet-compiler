@@ -203,7 +203,8 @@ sub AssembleUnscopedBlock
       }
       else
       {
-       push @$result, '1';
+		$context->{'sp'}++;
+		push @$result, '1';
       }
       push @$result, @{ AssembleReturn($context) };
     }
