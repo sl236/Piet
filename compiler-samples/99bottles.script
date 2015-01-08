@@ -1,16 +1,27 @@
-main()
-{
-  for( i = 99; i > 0; i-- )
-  {
-    beer( i );
-    asm{ @" on the wall.\nTake one down, pass it around\n"}
+main() {
+  for(i = 99; i >= 0; i--) {
+    beer(i);
+    asm{@" on the wall, "}
+    beer(i);
+    asm{@".\n"}
+    if (i == 0) {
+      asm{@"Go to the store and buy some more, "}
+      beer(99);
+    } else {
+      asm{@"Take one down, pass it around, "}
+      beer(i - 1);
+    }
+    asm{@" on the wall.\n\n"}
   }
-  beer( 0 );
-  asm{ @" on the wall.\n" }
 }
 
-beer( i )
-{
-  __outn(i);
-  asm{ @" bottles of beer" }
+beer(i) {
+  if (i == 1) {
+    asm{@"1 bottle of beer"}
+  } else { if (i == 0) {
+    asm{@"no more bottles of beer"}
+  } else {
+    __outn(i);
+    asm{@" bottles of beer"}
+  }}
 }
